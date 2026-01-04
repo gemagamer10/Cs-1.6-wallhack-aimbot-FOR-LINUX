@@ -103,7 +103,7 @@ The program will:
 | Key | Function |
 |-----|----------|
 | `F12` | Toggle aimbot on/off |
-| `W` | Toggle wallhack/ESP on/off |
+| `INS` | Toggle wallhack/ESP on/off |
 | `ESC` | Exit program |
 
 ### C Module Version (Advanced)
