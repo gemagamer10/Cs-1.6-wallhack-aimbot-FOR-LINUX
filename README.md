@@ -2,6 +2,8 @@
 Game Performance Utility — Linux
 Overview
 
+Source: https://github.com/mrz944/cs_16_aimbot
+
 Game Performance Utility is a Linux shared object (.so) module developed for educational and research purposes.
 It demonstrates runtime shared library loading, process interaction, and performance optimization techniques on Linux systems.
 
