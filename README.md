@@ -71,12 +71,7 @@ git clone https://github.com/yourusername/cs_16_aimbot.git
 cd cs_16_aimbot
 ```
 
-2. Install Python dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-3. (Optional) Compile C module:
+2. (Optional) Compile C module:
 ```bash
 cd /path/to/cs_16_aimbot
 make
@@ -112,6 +107,9 @@ For process injection using the compiled `.so`:
 
 **Using LD_PRELOAD:**
 ```bash
+exemple LD_PRELOAD=/home/gema/Transferências/cs_16_aimbot-main/LinuxSO.so \
+/home/gema/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Half-Life/hl_linux n
+
 LD_PRELOAD=./LinuxSO.so ./hl.exe
 ```
 
