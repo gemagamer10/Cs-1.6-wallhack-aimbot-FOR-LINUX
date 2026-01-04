@@ -12,7 +12,7 @@ from entity import Player
 from aimbot import Aimbot
 from config import Config
 from vector import Vector3
-from wallhack import Wallhack  # ← ADICIONAR AQUI
+from wallhack import Wallhack
 
 # Global variables for anti-detection
 STATUS_UPDATE_INTERVAL = random.uniform(2.0, 5.0)
@@ -24,7 +24,7 @@ suspicious_processes = [
     "immunity", "cheatengine", "httpdebugger", "fiddler", "charles"
 ]
 
-# ...existing code (funções clear_console, print_status, check_for_monitoring, etc)...
+# ...existing code...
 
 def main():
     try:
@@ -67,7 +67,6 @@ def main():
             input("Press Enter to exit...")
             return
         
-        # ← ADICIONAR WALLHACK AQUI:
         wallhack = None
         try:
             print("Initializing wallhack...")
@@ -89,12 +88,12 @@ def main():
         print(random.choice(init_messages))
         print(f"Press {config.toggle_key.upper()} to toggle assistant.")
         print(f"Press {config.exit_key.upper()} to exit.")
-        print(f"Press W to toggle wallhack.")  # ← ADICIONAR ESTA LINHA
+        print(f"Press INSERT to toggle wallhack.")  # ← MUDADO PARA INSERT
         
         # Register hotkeys with randomized delay
         time.sleep(random.uniform(0.1, 0.3))
         keyboard.add_hotkey(config.toggle_key, lambda: toggle_aimbot(aimbot))
-        keyboard.add_hotkey('w', lambda: toggle_wallhack(wallhack) if wallhack else None)  # ← ADICIONAR
+        keyboard.add_hotkey('insert', lambda: toggle_wallhack(wallhack) if wallhack else None)  # ← MUDADO PARA 'insert'
         
         # Start anti-detection thread
         anti_detect_thread = threading.Thread(target=anti_detection_thread, args=(aimbot,), daemon=True)
@@ -204,7 +203,6 @@ def main():
                             if target:
                                 aimbot.aim_at_target(target, local_player)
                             
-                            # ← ADICIONAR WALLHACK UPDATE AQUI:
                             if wallhack and wallhack.is_active:
                                 wallhack.update(local_player, players)
                         
@@ -243,7 +241,6 @@ def toggle_aimbot(aimbot):
     # Print random status message
     print(random.choice(status_terms[status]))
 
-# ← ADICIONAR ESTA FUNÇÃO NOVA:
 def toggle_wallhack(wallhack):
     """Toggle wallhack on/off"""
     if not wallhack:
