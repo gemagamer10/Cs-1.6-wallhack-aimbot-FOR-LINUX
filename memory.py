@@ -1,335 +1,103 @@
-# memory.py - Memory reading/writing functionality with anti-detection measures
-from pymem import Pymem
-from pymem.process import module_from_name
-import time
-import psutil
-import sys
-import random
 import ctypes
-import os
-from ctypes import wintypes
-import threading
+from ctypes import c_void_p, c_size_t, c_ssize_t, c_int
+import psutil
+import struct
 
-# Windows API constants and functions for stealthier memory access
-kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-PROCESS_VM_READ = 0x0010
-PROCESS_VM_WRITE = 0x0020
-PROCESS_VM_OPERATION = 0x0008
-PROCESS_QUERY_INFORMATION = 0x0400
+# Carrega a libc
+libc = ctypes.CDLL("libc.so.6")
 
-# Define Windows API functions
-ReadProcessMemory = kernel32.ReadProcessMemory
-ReadProcessMemory.argtypes = [wintypes.HANDLE, wintypes.LPCVOID, wintypes.LPVOID, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
-ReadProcessMemory.restype = wintypes.BOOL
+# Estrutura iovec
+class iovec(ctypes.Structure):
+    _fields_ = [
+        ("iov_base", c_void_p),
+        ("iov_len", c_size_t)
+    ]
 
-WriteProcessMemory = kernel32.WriteProcessMemory
-WriteProcessMemory.argtypes = [wintypes.HANDLE, wintypes.LPVOID, wintypes.LPCVOID, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
-WriteProcessMemory.restype = wintypes.BOOL
+# Configura process_vm_readv/writev
+process_vm_readv = libc.process_vm_readv
+process_vm_readv.argtypes = [c_int, ctypes.POINTER(iovec), c_size_t, ctypes.POINTER(iovec), c_size_t, c_size_t]
+process_vm_readv.restype = c_ssize_t
 
-class MemoryManager:
+process_vm_writev = libc.process_vm_writev
+process_vm_writev.argtypes = [c_int, ctypes.POINTER(iovec), c_size_t, ctypes.POINTER(iovec), c_size_t, c_size_t]
+process_vm_writev.restype = c_ssize_t
+
+class Memory:
     def __init__(self):
-        self.process = None
-        self.client_module = None
-        self.engine_module = None
-        self.handle_rotation_time = 30  # Seconds before rotating handle
-        self.last_handle_rotation = time.time()
-        self.handle = None
-        self.pid = None
-        self.access_jitter = True  # Add timing jitter to memory access
-        self.connect_to_game()
-        # Start handle rotation thread
-        self.handle_thread = threading.Thread(target=self._handle_rotation_thread, daemon=True)
-        self.handle_thread.start()
-        
-    def _handle_rotation_thread(self):
-        """Thread to periodically rotate process handles"""
-        while True:
-            time.sleep(random.uniform(25, 35))  # Randomize rotation time
+        self.pid = 0
+        self.client_base = 0
+        print("Memory manager inicializado (100% Python puro). Procurando CS 1.6...")
+
+    def find_cs_pid(self):
+        """Encontra PID e base do client.so"""
+        for proc in psutil.process_iter(['pid', 'name']):
             try:
-                self._rotate_handle()
-            except:
-                pass  # Silently fail
-        
-    def _rotate_handle(self):
-        """Rotate process handle to avoid detection"""
-        if not self.process:
-            return
-            
-        # Only rotate if enough time has passed
-        current_time = time.time()
-        if current_time - self.last_handle_rotation < self.handle_rotation_time:
-            return
-            
-        # Get a fresh handle with minimal permissions
-        try:
-            # Close old handle first if it exists
-            if self.handle:
-                kernel32.CloseHandle(self.handle)
-                
-            # Get a new handle with minimal required access
-            access = PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION | PROCESS_QUERY_INFORMATION
-            self.handle = kernel32.OpenProcess(access, False, self.pid)
-            self.last_handle_rotation = current_time
-            
-            # Randomize next rotation time (20-40 seconds)
-            self.handle_rotation_time = random.uniform(20, 40)
-        except:
-            pass  # Silently fail
-        
-    def connect_to_game(self):
-        """Find and connect to CS 1.6 process with stealth measures"""
-        # Randomize connection message to avoid signature detection
-        connect_messages = [
-            "Initializing...",
-            "Starting up...",
-            "Preparing environment...",
-            "Setting up components..."
-        ]
-        print(random.choice(connect_messages))
-        
-        # Common process names for CS 1.6 with some decoys to confuse signature detection
-        process_names = ["hl.exe", "cstrike.exe", "cs.exe"]
-        decoy_names = ["steam.exe", "Discord.exe", "chrome.exe"]
-        
-        # Add some random timing before searching
-        time.sleep(random.uniform(0.1, 0.5))
-        
-        # Try to find the process with randomized search order
-        all_procs = list(psutil.process_iter(['name', 'pid']))
-        random.shuffle(all_procs)  # Randomize search order
-        
-        for proc in all_procs:
-            # Occasionally check a decoy process to mask behavior pattern
-            if random.random() < 0.1:
-                continue
-                
-            if proc.info['name'] in process_names:
-                try:
-                    # Add slight delay before connection attempt
-                    time.sleep(random.uniform(0.05, 0.2))
-                    
-                    self.process = Pymem(proc.info['name'])
+                if proc.info['name'] and 'hl_linux' in proc.info['name'].lower():
                     self.pid = proc.info['pid']
-                    
-                    # Get a handle with minimal permissions
-                    access = PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION | PROCESS_QUERY_INFORMATION
-                    self.handle = kernel32.OpenProcess(access, False, self.pid)
-                    
-                    # Don't print connected message to avoid detection
-                    break
-                except Exception:
-                    pass
-        
-        # If process not found
-        if not self.process:
-            print("Required component not found. Please check your setup.")
-            
-            # Keep trying to connect with randomized retry timing
-            retry_count = 0
-            max_retries = random.randint(25, 35)  # Randomize max retries
-            
-            while not self.process and retry_count < max_retries:
-                sleep_time = random.uniform(0.8, 1.2)  # Randomize sleep time
-                time.sleep(sleep_time)
-                retry_count += 1
-                
-                # Shuffle process list each time
-                random.shuffle(all_procs)
-                
-                for proc in all_procs:
-                    if proc.info['name'] in process_names:
-                        try:
-                            self.process = Pymem(proc.info['name'])
-                            self.pid = proc.info['pid']
-                            
-                            # Get a handle with minimal permissions
-                            access = PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION | PROCESS_QUERY_INFORMATION
-                            self.handle = kernel32.OpenProcess(access, False, self.pid)
-                            break
-                        except Exception:
-                            pass
-            
-            if not self.process:
-                print("Setup incomplete. Please verify your environment.")
-                sys.exit(1)
-        
-        # Get modules with obfuscated approach and multiple fallback options
-        try:
-            # Add random delay before module access
-            time.sleep(random.uniform(0.1, 0.3))
-            
-            # Try multiple possible client module names
-            client_module_names = ["client.dll", "mp.dll", "cstrike.dll", "valve.dll"]
-            self.client_module = None
-            
-            print("Searching for client module...")
-            for client_name in client_module_names:
-                try:
-                    print(f"Trying client module: {client_name}")
-                    self.client_module = module_from_name(self.process.process_handle, client_name).lpBaseOfDll
-                    print(f"Found client module: {client_name} at address {hex(self.client_module)}")
-                    break
-                except Exception as e:
-                    print(f"Failed to find client module {client_name}: {str(e)}")
-                    continue
-            
-            if not self.client_module:
-                print("Client module not found. Please verify game installation.")
-                sys.exit(1)
-            
-            # Add jitter between module accesses
-            time.sleep(random.uniform(0.05, 0.15))
-            
-            # Try multiple possible engine module names
-            engine_module_names = ["hw.dll", "sw.dll", "engine.dll", "hl.dll"]
-            self.engine_module = None
-            
-            print("Searching for engine module...")
-            for engine_name in engine_module_names:
-                try:
-                    print(f"Trying engine module: {engine_name}")
-                    self.engine_module = module_from_name(self.process.process_handle, engine_name).lpBaseOfDll
-                    print(f"Found engine module: {engine_name} at address {hex(self.engine_module)}")
-                    break
-                except Exception as e:
-                    print(f"Failed to find engine module {engine_name}: {str(e)}")
-                    continue
-            
-            if not self.engine_module:
-                print("Engine module not found. Please verify game installation.")
-                sys.exit(1)
-            
-            # Don't print success message to avoid detection
-        except Exception as e:
-            print("Configuration issue detected. Make sure Counter-Strike is running.")
-            sys.exit(1)
-    
-    def _add_access_jitter(self):
-        """Add random timing jitter to memory access"""
-        if self.access_jitter and random.random() < 0.3:  # 30% chance to add jitter
-            time.sleep(random.uniform(0.001, 0.005))
-    
-    def read_int(self, address):
-        """Read 4-byte integer from memory with anti-detection measures"""
-        self._add_access_jitter()
-        
-        # Occasionally rotate handle
-        if random.random() < 0.01:  # 1% chance per read
-            self._rotate_handle()
-            
-        try:
-            # Use different read methods randomly to avoid pattern detection
-            if random.random() < 0.7:  # 70% chance to use pymem
-                return self.process.read_int(address)
-            else:  # 30% chance to use direct WinAPI
-                buffer = ctypes.c_int()
-                bytes_read = ctypes.c_size_t()
-                ReadProcessMemory(self.handle, address, ctypes.byref(buffer), 
-                                 ctypes.sizeof(buffer), ctypes.byref(bytes_read))
-                return buffer.value
-        except Exception:
+                    self.client_base = self.find_client_module()
+                    if self.client_base:
+                        print(f"✓ Processo encontrado: PID {self.pid}")
+                        print(f"✓ client.so base: 0x{self.client_base:x}")
+                        return True
+            except:
+                continue
+        return False
+
+    def find_client_module(self):
+        if not self.pid:
             return 0
-    
-    def read_float(self, address):
-        """Read 4-byte float from memory with anti-detection measures"""
-        self._add_access_jitter()
-        
-        # Occasionally rotate handle
-        if random.random() < 0.01:  # 1% chance per read
-            self._rotate_handle()
-            
         try:
-            # Use different read methods randomly
-            if random.random() < 0.7:  # 70% chance to use pymem
-                return self.process.read_float(address)
-            else:  # 30% chance to use direct WinAPI
-                buffer = ctypes.c_float()
-                bytes_read = ctypes.c_size_t()
-                ReadProcessMemory(self.handle, address, ctypes.byref(buffer), 
-                                 ctypes.sizeof(buffer), ctypes.byref(bytes_read))
-                return buffer.value
-        except Exception:
-            return 0.0
-    
-    def read_bytes(self, address, size):
-        """Read bytes from memory with anti-detection measures"""
-        self._add_access_jitter()
-        
-        # Occasionally rotate handle
-        if random.random() < 0.01:  # 1% chance per read
-            self._rotate_handle()
-            
-        try:
-            # Use different read methods randomly
-            if random.random() < 0.7:  # 70% chance to use pymem
-                return self.process.read_bytes(address, size)
-            else:  # 30% chance to use direct WinAPI
-                buffer = ctypes.create_string_buffer(size)
-                bytes_read = ctypes.c_size_t()
-                ReadProcessMemory(self.handle, address, buffer, size, ctypes.byref(bytes_read))
-                return buffer.raw
-        except Exception:
-            return b'\x00' * size
-    
-    def write_int(self, address, value):
-        """Write 4-byte integer to memory with anti-detection measures"""
-        self._add_access_jitter()
-        
-        # Occasionally rotate handle
-        if random.random() < 0.02:  # 2% chance per write
-            self._rotate_handle()
-            
-        try:
-            # Use different write methods randomly
-            if random.random() < 0.6:  # 60% chance to use pymem
-                self.process.write_int(address, value)
-            else:  # 40% chance to use direct WinAPI
-                data = ctypes.c_int(value)
-                bytes_written = ctypes.c_size_t()
-                WriteProcessMemory(self.handle, address, ctypes.byref(data), 
-                                  ctypes.sizeof(data), ctypes.byref(bytes_written))
-            return True
-        except Exception:
-            return False
-    
-    def write_float(self, address, value):
-        """Write 4-byte float to memory with anti-detection measures"""
-        self._add_access_jitter()
-        
-        # Occasionally rotate handle
-        if random.random() < 0.02:  # 2% chance per write
-            self._rotate_handle()
-            
-        try:
-            # Use different write methods randomly
-            if random.random() < 0.6:  # 60% chance to use pymem
-                self.process.write_float(address, value)
-            else:  # 40% chance to use direct WinAPI
-                data = ctypes.c_float(value)
-                bytes_written = ctypes.c_size_t()
-                WriteProcessMemory(self.handle, address, ctypes.byref(data), 
-                                  ctypes.sizeof(data), ctypes.byref(bytes_written))
-            return True
-        except Exception:
-            return False
-    
-    def write_bytes(self, address, value):
-        """Write bytes to memory with anti-detection measures"""
-        self._add_access_jitter()
-        
-        # Occasionally rotate handle
-        if random.random() < 0.02:  # 2% chance per write
-            self._rotate_handle()
-            
-        try:
-            # Use different write methods randomly
-            if random.random() < 0.6:  # 60% chance to use pymem
-                self.process.write_bytes(address, value, len(value))
-            else:  # 40% chance to use direct WinAPI
-                buffer = ctypes.create_string_buffer(value)
-                bytes_written = ctypes.c_size_t()
-                WriteProcessMemory(self.handle, address, buffer, len(value), 
-                                  ctypes.byref(bytes_written))
-            return True
-        except Exception:
-            return False
+            with open(f"/proc/{self.pid}/maps", "r") as f:
+                for line in f:
+                    if "client.so" in line:
+                        addr_str = line.split('-')[0]
+                        return int(addr_str, 16)
+        except:
+            pass
+        return 0
+
+    def read_memory(self, addr, size):
+        buffer = ctypes.create_string_buffer(size)
+        local = iovec(ctypes.addressof(buffer), size)
+        remote = iovec(c_void_p(addr), size)
+
+        result = process_vm_readv(self.pid, local, 1, remote, 1, 0)
+        if result == size:
+            return buffer.raw
+        return None
+
+    def read_uint(self, addr):
+        data = self.read_memory(addr, 4)
+        return struct.unpack("<I", data)[0] if data else 0
+
+    def read_int(self, addr):
+        data = self.read_memory(addr, 4)
+        return struct.unpack("<i", data)[0] if data else 0
+
+    def read_float(self, addr):
+        data = self.read_memory(addr, 4)
+        return struct.unpack("<f", data)[0] if data else 0.0
+
+    def read_vec3(self, addr):
+        data = self.read_memory(addr, 12)
+        if data:
+            return struct.unpack("<fff", data)
+        return (0.0, 0.0, 0.0)
+
+    def write_float(self, addr, value):
+        data = struct.pack("<f", value)
+        buffer = ctypes.create_string_buffer(data)
+        local = iovec(ctypes.addressof(buffer), len(data))
+        remote = iovec(c_void_p(addr), len(data))
+
+        result = process_vm_writev(self.pid, local, 1, remote, 1, 0)
+        return result == len(data)
+
+    def write_int(self, addr, value):
+        data = struct.pack("<i", value)
+        buffer = ctypes.create_string_buffer(data)
+        local = iovec(ctypes.addressof(buffer), len(data))
+        remote = iovec(c_void_p(addr), len(data))
+
+        result = process_vm_writev(self.pid, local, 1, remote, 1, 0)
+        return result == len(data)

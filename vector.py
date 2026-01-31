@@ -1,4 +1,3 @@
-# vector.py - Vector calculations for aimbot
 import math
 
 class Vector3:
@@ -6,79 +5,48 @@ class Vector3:
         self.x = float(x)
         self.y = float(y)
         self.z = float(z)
-    
+
     def __sub__(self, other):
         return Vector3(self.x - other.x, self.y - other.y, self.z - other.z)
-    
-    def __add__(self, other):
-        return Vector3(self.x + other.x, self.y + other.y, self.z + other.z)
-    
-    def __str__(self):
-        return f"Vector3({self.x:.2f}, {self.y:.2f}, {self.z:.2f})"
-    
+
     def length(self):
-        return math.sqrt(self.x * self.x + self.y * self.y + self.z * self.z)
-    
-    def distance(self, other):
+        return math.sqrt(self.x**2 + self.y**2 + self.z**2)
+
+    def distance_to(self, other):
         return (self - other).length()
-    
-    def normalize(self):
-        length = self.length()
-        if length != 0:
-            return Vector3(self.x / length, self.y / length, self.z / length)
-        return Vector3()
 
-def calculate_angle(source_pos, dest_pos):
-    """Calculate angle between two 3D points"""
-    delta = dest_pos - source_pos
-    
-    # Calculate horizontal and vertical distances
-    hyp = math.sqrt(delta.x * delta.x + delta.y * delta.y)
-    
-    # Calculate angles in degrees
-    pitch = -math.atan2(delta.z, hyp) * 180 / math.pi
-    yaw = math.atan2(delta.y, delta.x) * 180 / math.pi
-    
-    return Vector3(pitch, yaw, 0)
+def calc_angle(source, dest):
+    """
+    Calcula pitch e yaw de source para dest
+    Retorna tuple (pitch, yaw) em graus
+    """
+    delta = dest - source
+    hypot = math.sqrt(delta.x**2 + delta.y**2)
 
-def normalize_angles(angles):
-    """Normalize angles to be within acceptable ranges"""
-    result = Vector3(angles.x, angles.y, angles.z)
-    
-    # Normalize pitch (-89 to 89)
-    if result.x > 89:
-        result.x = 89
-    elif result.x < -89:
-        result.x = -89
-        
-    # Normalize yaw (-180 to 180)
-    while result.y > 180:
-        result.y -= 360
-    while result.y < -180:
-        result.y += 360
-        
-    result.z = 0
-    return result
+    if hypot < 1.0:
+        hypot = 1.0
 
-def angle_to_vector(angle):
-    """Convert angle to direction vector"""
-    pitch = angle.x * math.pi / 180
-    yaw = angle.y * math.pi / 180
-    
-    sp = math.sin(pitch)
-    cp = math.cos(pitch)
-    sy = math.sin(yaw)
-    cy = math.cos(yaw)
-    
-    return Vector3(cp * cy, cp * sy, -sp)
+    # Pitch: negativo porque o eixo Z no CS é invertido (olhar para cima = pitch negativo)
+    pitch = math.degrees(math.atan2(-delta.z, hypot))
+    yaw = math.degrees(math.atan2(delta.y, delta.x))
 
-def calc_fov(view_angle, aim_angle):
-    """Calculate FOV between two angles"""
-    view_vector = angle_to_vector(view_angle)
-    aim_vector = angle_to_vector(aim_angle)
-    
-    # Calculate dot product
-    dot = view_vector.x * aim_vector.x + view_vector.y * aim_vector.y + view_vector.z * aim_vector.z
-    
-    # Convert to degrees
-    return math.acos(max(min(dot, 1.0), -1.0)) * 180 / math.pi
+    return pitch, yaw
+
+def normalize_angles(pitch, yaw):
+    """
+    Normaliza os ângulos para valores válidos no jogo
+    Retorna tuple (pitch, yaw)
+    """
+    # Pitch entre -89 e 89
+    if pitch > 89.0:
+        pitch = 89.0
+    elif pitch < -89.0:
+        pitch = -89.0
+
+    # Yaw entre -180 e 180
+    while yaw > 180.0:
+        yaw -= 360.0
+    while yaw < -180.0:
+        yaw += 360.0
+
+    return pitch, yaw
